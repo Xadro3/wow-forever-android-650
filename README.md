@@ -10,6 +10,36 @@ This uses Blizzard's own **Windows ARM64** WoW client, so the game itself runs n
 
 ## Supported devices
 
+**Pimax Portal / Adreno 650 (experimental fork)**
+
+This fork detects Adreno 650 separately and defaults to 720p. Its setup screen
+offers **Bundled Turnip (experimental)** and **System / Magisk** driver choices.
+The bundled Turnip build reaches the animated login screen on the stock Android
+10 Portal with the RP Mini V@0764 Magisk module installed. In-world performance
+and controller behavior still need testing. Gameplay has also exposed a kernel
+GPU hang followed by a Turnip KGSL wait assertion; stability is not established.
+The driver menu includes **Bundled Turnip (sysmem test)** as an optional rendering
+mode comparison, not a verified fix for that hang.
+
+Android 10 startup also installs the selected Wine runtime's `l_intl.nls` into
+the image filesystem's standard NLS fallback directory. Without it, Wine's
+server exits with `failed to load l_intl.nls` before graphics initialization.
+
+On the stock Android 10 test device, the UltimG RP Mini V@0764 module reports
+Vulkan 1.1.273. [DXVK 2.4.1 requires Vulkan 1.3](https://github.com/doitsujin/dxvk/wiki/Driver-support/b38c3a08f5956430033b7ecd5b20a67434e4be8f), so that system-driver path is
+for diagnostics and is not expected to run the bundled DXVK successfully.
+Installing a system driver module does not replace the app-selected Turnip driver.
+
+Adreno 650 debug builds offer **Detailed launch logs**, disabled by default to
+avoid tracing overhead while playing. Enable it before reproducing a crash,
+then disable it for performance comparisons. A 540p option is also available
+to compare against the default 720p in the same area after downloads settle.
+Wine output is saved to
+`/sdcard/Android/data/app.wowforever/files/wine_logs/wine_debug.log`;
+DXVK logs normally appear beside the game executable. Capture `adb logcat`
+for Android/native crashes. Game files can be downloaded on the Portal using
+**Download & Install**; a PC copy is optional.
+
 | Device | Status |
 | :--- | :--- |
 | AYN Thor (Snapdragon 8 Gen 2 / Adreno 740) | Tested, reaches the game world with controller support |
@@ -21,7 +51,7 @@ This uses Blizzard's own **Windows ARM64** WoW client, so the game itself runs n
 | Poco F7 (Snapdragon 8s Gen 4 / Adreno 825) | Tested by gusebus |
 | Samsung Galaxy S23/S24/S25 / Z Fold series | Supported (with automatic Samsung UBWC optimization) |
 
-Requirements:
+Upstream requirements (the experimental Portal configuration above is still under test):
 
 - Snapdragon 8 series (Adreno 7xx or Adreno 8xx). The app bundles both the Adreno 740 driver and the Turnip v32 driver for Snapdragon 8 Elite / Adreno 8xx, automatically detecting the GPU and applying the optimal driver and environment flags.
 - Android 10 or newer, 64-bit.

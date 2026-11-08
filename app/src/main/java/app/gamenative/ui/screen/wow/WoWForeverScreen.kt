@@ -41,6 +41,7 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.LifecycleResumeEffect
 import app.gamenative.BuildConfig
 import app.gamenative.PluviaApp
+import app.gamenative.PrefManager
 import app.gamenative.events.AndroidEvent
 import app.gamenative.ui.screen.wow.WowClientDownloader.BUILD_INFO
 import app.gamenative.ui.screen.wow.WowClientDownloader.EXE_NAME
@@ -93,6 +94,9 @@ fun WoWForeverScreen(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val gpu = remember { GpuProfile.detect(context) }
+    var portalDriver by remember { mutableStateOf(PortalDriver.current(context)) }
+    var portalDiagnostics by remember { mutableStateOf(prefs(context).getBoolean("portal_diagnostics", false)) }
+    val launchGpu = if (gpu.isAdreno650) gpu.copy(driver = portalDriver.driver, tuDebug = portalDriver.tuDebug, diagnostics = portalDiagnostics) else gpu
 
     var gamePath by remember { mutableStateOf(GamePath.load(context)) }
     var files by remember { mutableStateOf(GamePath.Status()) }
@@ -211,7 +215,7 @@ fun WoWForeverScreen(
             try {
                 val screenSize = fitScreenSizeToWindow(context, resolution.size)
                 val containerId = withContext(Dispatchers.IO) {
-                    prepareLaunch(context, File(gamePath), gpu, screenSize) { msg ->
+                    prepareLaunch(context, File(gamePath), launchGpu, screenSize) { msg ->
                         scope.launch(Dispatchers.Main) { statusText = msg }
                     }
                 }
@@ -476,6 +480,28 @@ fun WoWForeverScreen(
                         OptionMenu("Resolution: ${resolution.label}", Icons.Default.AspectRatio, RenderResolution.entries, resolution, { it.label }, !isLaunching) {
                             RenderResolution.save(context, it)
                             resolution = it
+                        }
+                    }
+
+                    if (gpu.isAdreno650) {
+                        OptionMenu("Driver: ${portalDriver.label}", Icons.Default.AspectRatio, PortalDriver.entries, portalDriver, { it.label }, !isLaunching) {
+                            PortalDriver.save(context, it)
+                            portalDriver = it
+                        }
+                        Text("System driver requires Vulkan 1.3 for DXVK 2.4.1. Bundled Turnip is experimental on Adreno 650.", fontSize = 11.sp, color = WowSubtle)
+                        if (BuildConfig.DEBUG) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Switch(
+                                    checked = portalDiagnostics,
+                                    onCheckedChange = {
+                                        portalDiagnostics = it
+                                        prefs(context).edit().putBoolean("portal_diagnostics", it).apply()
+                                    },
+                                    enabled = !isLaunching && !isUpdating,
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text("Detailed launch logs (slower; applies on next launch)", fontSize = 11.sp, color = WowSubtle)
+                            }
                         }
                     }
 
@@ -909,7 +935,7 @@ enum class GameRegion(val label: String) {
 
 /** The 16:9 render budget, before it's reshaped to the window's aspect ratio. Defaults to the GPU profile's size. */
 enum class RenderResolution(val size: String, val label: String) {
-    HD("1280x720", "720p"), FULL_HD("1920x1080", "1080p");
+    LOW("960x540", "540p"), HD("1280x720", "720p"), FULL_HD("1920x1080", "1080p");
 
     companion object {
         private const val KEY_RESOLUTION = "resolution"
@@ -1116,9 +1142,24 @@ private const val ADRENO_8XX_DRIVER = "Turnip-V32-RP6sched"
 private const val PROTON_VERSION = "proton-11.0-90624-arm64ec"
 private const val DXVK_VERSION = "2.4.1-wow-aarch64-test"
 
-private data class GpuProfile(val driver: String, val tuDebug: String, val screenSize: String, val label: String, val edition: String) {
+private enum class PortalDriver(val driver: String, val tuDebug: String, val label: String) {
+    TURNIP(DEFAULT_DRIVER, "noconform", "Bundled Turnip (experimental)"),
+    TURNIP_SYSMEM(DEFAULT_DRIVER, "noconform,sysmem", "Bundled Turnip (sysmem test)"),
+    SYSTEM("System", "", "System / Magisk");
+
     companion object {
-        fun detect(context: Context) = if (isAdreno8xxDevice(context)) {
+        fun current(context: Context) = entries.firstOrNull { it.name == prefs(context).getString("portal_driver", null) } ?: TURNIP
+        fun save(context: Context, driver: PortalDriver) {
+            prefs(context).edit().putString("portal_driver", driver.name).apply()
+        }
+    }
+}
+
+private data class GpuProfile(val driver: String, val tuDebug: String, val screenSize: String, val label: String, val edition: String, val isAdreno650: Boolean = false, val diagnostics: Boolean = false) {
+    companion object {
+        fun detect(context: Context) = if (Regex("adreno\\D*650\\b", RegexOption.IGNORE_CASE).containsMatchIn(GPUInformation.getRenderer(context))) {
+            GpuProfile(DEFAULT_DRIVER, "noconform", "1280x720", "Adreno 650", "Pimax Portal / Adreno 650", isAdreno650 = true)
+        } else if (isAdreno8xxDevice(context)) {
             GpuProfile(ADRENO_8XX_DRIVER, "noconform,sysmem", "1280x720", "Adreno 8xx", "Snapdragon 8 Elite / Adreno 8xx")
         } else {
             GpuProfile(DEFAULT_DRIVER, "noconform", "1920x1080", "Adreno 740", "Snapdragon 8 Series / Adreno 740")
@@ -1159,6 +1200,13 @@ internal fun fitScreenSize(baseSize: String, windowWidth: Int, windowHeight: Int
 }
 
 private fun prepareLaunch(context: Context, gameRoot: File, gpu: GpuProfile, screenSize: String, onStatus: (String) -> Unit): String {
+    Timber.i("WoW launch: GPU=%s driver=%s resolution=%s Android=%s", GPUInformation.getRenderer(context), gpu.driver, screenSize, Build.VERSION.RELEASE)
+    if (gpu.isAdreno650) {
+        PrefManager.enableWineDebug = BuildConfig.DEBUG && gpu.diagnostics
+        if (PrefManager.enableWineDebug) {
+            PrefManager.wineDebugChannels = "timestamp,pid,tid,seh,debugstr,loaddll"
+        }
+    }
     installBundledComponents(context, onStatus)
 
     check(File(gameRoot, BUILD_INFO).exists()) { "Missing $BUILD_INFO in $gameRoot. Copy it from your WoW install." }
@@ -1211,7 +1259,7 @@ private fun containerConfig(gameRoot: File, gpu: GpuProfile, screenSize: String)
         put("graphicsDriverConfig", "version=${gpu.driver},adrenotoolsTurnip=1,resourceType=buffer,bcnEmulation=auto,quality=high")
         put("displayRenderer", "vulkan")
         put("dxwrapper", "dxvk-$DXVK_VERSION-1")
-        put("dxwrapperConfig", "version=$DXVK_VERSION-1")
+        put("dxwrapperConfig", "version=$DXVK_VERSION-1" + if (BuildConfig.DEBUG && gpu.isAdreno650 && gpu.diagnostics) ",logLevel=info" else "")
         put("wineVersion", "$PROTON_VERSION-1")
         put("containerVariant", "bionic")
         put("fexcoreVersion", "2609-0")

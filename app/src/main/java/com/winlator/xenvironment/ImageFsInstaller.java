@@ -33,6 +33,7 @@ import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
+import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.concurrent.Executors;
@@ -41,6 +42,16 @@ import java.util.concurrent.atomic.AtomicLong;
 
 public abstract class ImageFsInstaller {
     public static final byte LATEST_VERSION = 31;
+
+    /** Android 10's linker path can defeat wineserver's /proc/self/exe-relative NLS lookup. */
+    public static void ensureWineNlsFallback(File wineDir, File rootDir) throws IOException {
+        File source = new File(wineDir, "share/wine/nls/l_intl.nls");
+        if (!source.isFile()) throw new IOException("Wine NLS data missing: " + source);
+        File destination = new File(rootDir, "usr/share/wine/nls/l_intl.nls");
+        Files.createDirectories(destination.toPath().getParent());
+        // Refresh from the selected Wine version, including after a runtime upgrade.
+        Files.copy(source.toPath(), destination.toPath(), StandardCopyOption.REPLACE_EXISTING);
+    }
 
     private static void resetContainerImgVersions(Context context) {
         ContainerManager manager = new ContainerManager(context);

@@ -165,6 +165,7 @@ import com.winlator.winhandler.OnGetProcessInfoListener
 import com.winlator.winhandler.ProcessInfo
 import com.winlator.xconnector.UnixSocketConfig
 import com.winlator.xenvironment.ImageFs
+import com.winlator.xenvironment.ImageFsInstaller
 import com.winlator.xenvironment.XEnvironment
 import com.winlator.xenvironment.components.ALSAServerComponent
 import com.winlator.xenvironment.components.BionicProgramLauncherComponent
@@ -2156,6 +2157,10 @@ fun XServerScreen(
                                 imageFs.setWinePath(xServerState.value.wineInfo.path)
                             } else {
                                 imageFs.setWinePath(imageFs.rootDir.path + "/opt/wine")
+                            }
+
+                            if (BuildConfig.MODERN_ANDROID && Build.VERSION.SDK_INT == Build.VERSION_CODES.Q && container.containerVariant == Container.BIONIC) {
+                                ImageFsInstaller.ensureWineNlsFallback(File(imageFs.winePath), imageFs.rootDir)
                             }
 
                             val onExtractFileListener = if (!xServerState.value.wineInfo.isWin64) {
@@ -4751,7 +4756,7 @@ private suspend fun extractGraphicsDriverFiles(
             }
         }
 
-        if (adrenoToolsDriverId !== "System") {
+        if (adrenoToolsDriverId != "System") {
             val adrenotoolsManager: AdrenotoolsManager = AdrenotoolsManager(context)
             adrenotoolsManager.setDriverById(envVars, imageFs, adrenoToolsDriverId)
         }
