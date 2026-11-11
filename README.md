@@ -143,6 +143,75 @@ Whenever Blizzard patches the game:
 
 ## Troubleshooting
 
+### Adreno 650: GPU load, memory use and crashes
+
+The setup screen now offers **Low GPU / memory use (30 FPS)**, off by default.
+It applies to existing installs on every launch while enabled: 30 FPS foreground,
+8 FPS background, 75% render scale, lower world/character textures, shorter view
+distance and reduced effects, including raid settings. Ground combat indicators
+remain enabled. This is an experimental load-reduction profile; it has not been
+validated on the Portal and does not establish a fix for the recorded KGSL hang.
+
+Start at **720p** with this profile, giving roughly 960x540 scene rendering while
+keeping the UI at the container resolution. Compare **540p** if still GPU-bound.
+Keep detailed launch logs off during FPS comparisons. A 30 FPS cap reduces work
+only when the game could otherwise render above 30; it cannot make a 15 FPS scene
+run at 30. Compare the same location after streamed downloads and shader work settle.
+
+The game settings file is `<game folder>/_forever_/WTF/Config.wtf`, normally
+`/storage/emulated/0/WoW Forever/_forever_/WTF/Config.wtf`. Exit the game before
+editing it. Turn the profile off for manual tuning; this stops reapplying its
+values but does not restore earlier settings. The first application saves
+`Config.wtf.before-low-load` alongside it. To undo the profile, turn it off, exit
+the game, then copy that backup over `Config.wtf`.
+
+For a smaller manual experiment, replace existing assignments (avoid duplicates):
+
+```text
+SET useMaxFPS "1"
+SET maxFPS "30"
+SET useMaxFPSBk "1"
+SET maxFPSBk "8"
+SET useTargetFPS "0"
+SET RenderScale "0.75"
+SET ResampleQuality "0"
+SET graphicsTextureResolution "0"
+SET worldBaseMip "2"
+SET componentTextureLevel "1"
+SET worldPreloadHighResTextures "0"
+SET shadowMode "0"
+SET SSAO "0"
+```
+
+The full profile is in `LowLoadGraphics.kt`. Existing defaults only seeded new
+configs and included full-detail textures (`worldBaseMip=0`) and `farclip=1200`.
+Manual graphics edits survive launch with the profile off; the launcher still
+sets D3D11, region and fullscreen/windowed resolution. Use the launcher's
+Resolution menu for the latter. Client versions may clamp or ignore CVars:
+verify accepted values after login, for example
+`/run print(GetCVar("worldBaseMip"), GetCVar("RenderScale"), GetCVar("maxFPS"))`.
+The [Blizzard graphics UI source](https://github.com/Gethe/wow-ui-source/blob/classic_era/Interface/AddOns/Blizzard_SettingsDefinitions_Shared/Graphics.lua)
+defines the FPS controls; [client CVar metadata](https://github.com/Ketho/BlizzardInterfaceResources/blob/live/Resources/CVars.lua)
+documents the texture and preload variables (the live client can differ from Forever).
+
+Adreno shares system RAM. Texture detail and render targets are useful controls;
+lowering Wine's reported VRAM is not an allocation limit.
+[DXVK 2.4.1's configuration](https://github.com/doitsujin/dxvk/blob/v2.4.1/dxvk.conf)
+explicitly describes `dxgi.maxDeviceMemory` / `dxgi.maxSharedMemory` as reporting
+overrides that applications may ignore. This change does not impose such a cap.
+
+The linked [DroidDeck launcher repo](https://github.com/arusiasotto/wow-forever-droiddeck)
+recommends D3D11, as this app already uses. Its
+[WoW Proton build](https://github.com/arusiasotto/DroidDeck-Proton-WoW-arm64ec)
+targets a glibc Linux guest, excludes Android/bionic fixes, and adds ARM64EC
+exception, syscall and NLS patches. It is not a compatible replacement for this
+app's bionic runtime. Porting selected fixes would require a separate Wine build
+and validation; these patches do not document an Adreno 650 GPU-hang fix.
+
+If a crash persists, capture `adb logcat` through the failure and check the
+game's `_forever_/Errors/` folder. GPU utilization alone does not distinguish a
+driver/kernel hang from an allocation failure or Android killing the process.
+
 | Symptom | Fix |
 | :--- | :--- |
 | *CAS system was unable to initialize: no active install info entries* | `.build.info` or `_forever_/.flavor.info` is missing on the device. |

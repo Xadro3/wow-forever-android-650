@@ -1,6 +1,8 @@
 package app.gamenative.ui.screen.wow
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
@@ -53,5 +55,19 @@ class GameConfigTest {
             listOf("SET gxFullscreenResolution \"1920x1080\"", "SET gxWindowedResolution \"1920x1080\""),
             configWtf(root).readLines().filter { it.contains("Resolution ") },
         )
+    }
+
+    @Test
+    fun lowLoad_isOptIn_andDisablingAllowsManualTuning() {
+        val root = install("eu", "SET RenderScale \"1\"\nSET maxFPS \"60\"\n")
+        ensureGameConfig(root, "1280x720", null)
+        assertTrue(configWtf(root).readLines().contains("SET RenderScale \"1\""))
+        assertFalse(File(configWtf(root).parentFile, "Config.wtf.before-low-load").exists())
+
+        ensureGameConfig(root, "1280x720", null, lowLoadGraphics = true)
+        assertTrue(configWtf(root).readLines().contains("SET RenderScale \"0.75\""))
+        configWtf(root).writeText(configWtf(root).readText().replace("SET maxFPS \"30\"", "SET maxFPS \"40\""))
+        ensureGameConfig(root, "1280x720", null, lowLoadGraphics = false)
+        assertTrue(configWtf(root).readLines().contains("SET maxFPS \"40\""))
     }
 }

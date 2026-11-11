@@ -96,6 +96,7 @@ fun WoWForeverScreen(
     val gpu = remember { GpuProfile.detect(context) }
     var portalDriver by remember { mutableStateOf(PortalDriver.current(context)) }
     var portalDiagnostics by remember { mutableStateOf(prefs(context).getBoolean("portal_diagnostics", false)) }
+    var lowLoadGraphics by remember { mutableStateOf(prefs(context).getBoolean("low_load_graphics", false)) }
     val launchGpu = if (gpu.isAdreno650) gpu.copy(driver = portalDriver.driver, tuDebug = portalDriver.tuDebug, diagnostics = portalDiagnostics) else gpu
 
     var gamePath by remember { mutableStateOf(GamePath.load(context)) }
@@ -482,6 +483,24 @@ fun WoWForeverScreen(
                             resolution = it
                         }
                     }
+
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Switch(
+                            checked = lowLoadGraphics,
+                            onCheckedChange = {
+                                lowLoadGraphics = it
+                                prefs(context).edit().putBoolean("low_load_graphics", it).apply()
+                            },
+                            enabled = !isLaunching && !isUpdating,
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Low GPU / memory use (30 FPS)", fontSize = 11.sp, color = WowSubtle)
+                    }
+                    Text(
+                        "Applies on each launch: 75% render scale, low textures and effects. Turn off for manual tuning; previous settings are backed up in WTF/Config.wtf.before-low-load.",
+                        fontSize = 11.sp,
+                        color = WowSubtle,
+                    )
 
                     if (gpu.isAdreno650) {
                         OptionMenu("Driver: ${portalDriver.label}", Icons.Default.AspectRatio, PortalDriver.entries, portalDriver, { it.label }, !isLaunching) {
@@ -1211,7 +1230,7 @@ private fun prepareLaunch(context: Context, gameRoot: File, gpu: GpuProfile, scr
 
     check(File(gameRoot, BUILD_INFO).exists()) { "Missing $BUILD_INFO in $gameRoot. Copy it from your WoW install." }
     try {
-        ensureGameConfig(gameRoot, screenSize, GameRegion.saved(context))
+        ensureGameConfig(gameRoot, screenSize, GameRegion.saved(context), prefs(context).getBoolean("low_load_graphics", false))
     } catch (e: Exception) {
         if (e.isPermissionDenied()) throw StorageAccessDeniedException(e)
         throw e
@@ -1308,7 +1327,7 @@ private val CONFIG_DEFAULTS = linkedMapOf(
     "accessibilityScreenNarrationEnabled" to "\"0\"",
 )
 
-internal fun ensureGameConfig(root: File, screenSize: String, region: GameRegion?) {
+internal fun ensureGameConfig(root: File, screenSize: String, region: GameRegion?, lowLoadGraphics: Boolean = false) {
     val flavorDir = File(root, FLAVOR_DIR)
     flavorDir.mkdirs()
     val flavorInfo = File(flavorDir, ".flavor.info")
@@ -1343,6 +1362,7 @@ internal fun ensureGameConfig(root: File, screenSize: String, region: GameRegion
         val kept = original.filterNot { line -> forced.keys.any { line.startsWith("SET $it ", ignoreCase = true) } }
         configWtf.writeText((kept + forcedLines).joinToString("\n") + "\n")
     }
+    if (lowLoadGraphics) applyLowLoadGraphics(configWtf)
 }
 
 private val RESOLUTION_KEYS = listOf("gxFullscreenResolution", "gxWindowedResolution")
